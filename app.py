@@ -10,7 +10,7 @@ import urllib.request
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer V3.0", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer V3.1", page_icon="🏗️", layout="wide")
 
 # Setup Font
 @st.cache_resource
@@ -46,9 +46,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ENGINEERING DATA (UPDATED)
+# 2. ENGINEERING DATA (SMART LISTS)
 # ==========================================
-# 1. Rebar Grade Database (ksc)
+# Grade DB
 FY_GRADES = {
     "SR24": 2400,
     "SD30": 3000,
@@ -56,13 +56,14 @@ FY_GRADES = {
     "SD50": 5000
 }
 
-# 2. Rebar Lists (Separated)
-# Main Bar (Usually Deformed Bars)
+# Rebar Lists
 main_rebar_list = ["DB12", "DB16", "DB20", "DB22", "DB25", "DB28", "DB32"]
-# Stirrup Bar (Round + Small Deformed)
-link_rebar_list = ["RB6", "RB9", "RB12", "DB10", "DB12", "DB16"]
 
-# Combined DB for Area Calculation
+# Stirrup Lists (Separated by Type)
+stirrup_rb_list = ["RB6", "RB9", "RB12"]
+stirrup_db_list = ["DB10", "DB12", "DB16"]
+
+# Combined DB for Properties
 rebar_db = {
     "RB6": 0.6, "RB9": 0.9, "RB12": 1.2,
     "DB10": 1.0, "DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB22": 2.2,
@@ -312,22 +313,20 @@ def plot_section_preview(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_
 # ==========================================
 # 5. STREAMLIT UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Column Designer (V3.0)")
+st.title("🏗️ Ultimate SRC Column Designer (V3.1)")
 st.markdown("---")
 
-# --- SIDEBAR INPUTS (Reorganized) ---
+# --- SIDEBAR INPUTS ---
 with st.sidebar:
     st.header("1️⃣ Section Properties")
     
-    # 1. Concrete (Updated: Added Cover)
     with st.expander("Concrete & Section", expanded=True):
         col1, col2 = st.columns(2)
         w_b = col1.number_input("Width b (cm)", value=50.0, step=5.0)
         w_h = col2.number_input("Depth h (cm)", value=50.0, step=5.0)
         w_fc = col1.number_input("fc' (ksc)", value=280.0, step=10.0)
-        w_cover = col2.number_input("Cover (cm)", value=4.0, step=0.5) # Moved here
+        w_cover = col2.number_input("Cover (cm)", value=4.0, step=0.5)
 
-    # 2. Structural Steel
     with st.expander("Structural Steel (SRC)", expanded=True):
         w_steel_key = st.selectbox("H-Beam Size", ["Custom"] + list(H_BEAM_STD.keys()), index=4)
         custom_prop = None
@@ -341,14 +340,12 @@ with st.sidebar:
             
         w_fy_steel = st.number_input("Fy Steel (ksc)", value=2400.0, step=100.0)
 
-    # 3. Reinforcement (Updated: Grade Selection)
     with st.expander("Reinforcement", expanded=True):
         st.markdown("**Main Bars**")
         col1, col2 = st.columns(2)
         w_main_bar = col1.selectbox("Size", main_rebar_list, index=3)
-        # Dropdown for Main Fy
         w_fy_main_key = col2.selectbox("Fy (Main)", ["SD30", "SD40", "SD50"], index=1)
-        w_fy_main = FY_GRADES[w_fy_main_key] # Map to value
+        w_fy_main = FY_GRADES[w_fy_main_key]
         
         c3, c4 = st.columns(2)
         w_nx = c3.number_input("Nx (side b)", value=3, min_value=2)
@@ -357,11 +354,17 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("**Stirrups**")
         col3, col4 = st.columns(2)
-        w_stir_bar = col3.selectbox("Size ", link_rebar_list, index=1) # Space to differentiate key
-        # Dropdown for Stirrup Fy
+        # 1. Select Grade First
         w_fy_stir_key = col4.selectbox("Fy (Stirrup)", ["SR24", "SD30", "SD40", "SD50"], index=0)
-        w_fy_stir = FY_GRADES[w_fy_stir_key] # Map to value
+        w_fy_stir = FY_GRADES[w_fy_stir_key]
         
+        # 2. Logic to filter Size list
+        if w_fy_stir_key == "SR24":
+            current_stir_list = stirrup_rb_list
+        else:
+            current_stir_list = stirrup_db_list
+            
+        w_stir_bar = col3.selectbox("Size ", current_stir_list, index=1) # Note: Space key to unique
         w_stir_spacing = st.number_input("Spacing @ (cm)", value=15.0, step=1.0)
 
     st.header("2️⃣ Factors")
@@ -386,7 +389,7 @@ with col_main_R:
     w_input = st.text_area("Paste Data Here:", value=default_input, height=150)
     
     if st.button("🚀 Run Analysis", type="primary"):
-        # --- Validation ---
+        # Validation
         prop_check = get_steel_prop(w_steel_key, custom_prop)
         if prop_check:
             d_mm, bf_mm, tf_mm, tw_mm = prop_check['d'], prop_check['bf'], prop_check['tf'], prop_check['tw']
