@@ -5,29 +5,26 @@ import matplotlib.patches as patches
 import matplotlib.font_manager as fm
 import re
 import os
-import urllib.request  # <--- เพิ่ม Library นี้เพื่อโหลดฟอนต์บน Windows
+import urllib.request
 
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer V2.4", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer V2.5", page_icon="🏗️", layout="wide")
 
-# Setup Font (Cross-Platform Fix)
+# Setup Font (Cross-Platform)
 @st.cache_resource
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Regular.ttf"
     font_path = "Sarabun-Regular.ttf"
     
-    # Check if font exists, if not download using Python (Works on Windows/Mac/Linux)
     if not os.path.exists(font_path):
         try:
-            with st.spinner("Downloading Thai Font..."):
-                urllib.request.urlretrieve(font_url, font_path)
+            # ใช้ urllib แทน wget เพื่อรองรับ Windows
+            urllib.request.urlretrieve(font_url, font_path)
         except Exception as e:
-            st.error(f"Error downloading font: {e}")
-            return None
+            return "sans-serif" # Fallback
 
-    # Register Font
     try:
         fe = fm.FontEntry(fname=font_path, name='Sarabun')
         fm.fontManager.ttflist.insert(0, fe)
@@ -35,27 +32,54 @@ def setup_font():
         plt.rcParams['axes.unicode_minus'] = False
         plt.rcParams['font.size'] = 11
         return fe.name
-    except Exception as e:
-        st.warning("Could not load custom font. Using default.")
+    except:
         return "sans-serif"
 
 setup_font()
 
+# CSS Styling (Sidebar Width + Dark Mode Fix)
 st.markdown("""
 <style>
-    .report-box { background-color: #f0f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid #28a745; font-family: monospace; white-space: pre-wrap; }
-    div[data-testid="column"] { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    /* 1. ขยายความกว้าง Sidebar */
+    section[data-testid="stSidebar"] {
+        width: 400px !important;
+    }
+
+    /* 2. กล่อง Report (บังคับตัวหนังสือสีดำ เพื่อแก้ปัญหา Dark Mode) */
+    .report-box { 
+        background-color: #f0f2f6; 
+        color: #000000 !important;
+        padding: 20px; 
+        border-radius: 10px; 
+        border-left: 5px solid #28a745; 
+        font-family: monospace; 
+        white-space: pre-wrap; 
+    }
+
+    /* 3. กล่อง Layout พื้นขาว (บังคับตัวหนังสือสีดำ) */
+    div[data-testid="column"] { 
+        background-color: #ffffff; 
+        color: #000000 !important;
+        padding: 15px; 
+        border-radius: 10px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+    }
+    
+    /* แก้สีหัวข้อในกล่องขาว */
+    div[data-testid="column"] h3 {
+        color: #000000 !important;
+    }
+    
+    .stButton>button { width: 100%; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
 # 2. ENGINEERING DATA
 # ==========================================
-# DB Lists
 main_rebar_list = ["DB12", "DB16", "DB20", "DB25", "DB28", "DB32"]
 link_rebar_list = ["RB6", "RB9", "DB10", "DB12"]
 
-# Combined DB
 rebar_db = {
     "RB6": 0.6, "RB9": 0.9, 
     "DB10": 1.0, "DB12": 1.2, 
@@ -108,7 +132,7 @@ def parse_loads(raw_text, scale_seismic, mag_m2, mag_m3):
     if not raw_text: return []
     lines = raw_text.strip().split('\n'); processed_loads = []
     for i, line in enumerate(lines):
-        line = line.replace(',', '') # Fix comma
+        line = line.replace(',', '') 
         nums = [float(x) for x in re.findall(r"-?\d+\.?\d*", line)]
         if len(nums) >= 5:
             P, M2, M3, V2, V3 = nums[0], nums[1], nums[2], nums[3], nums[4]
@@ -307,7 +331,7 @@ def plot_section_preview(W, D, cov, nx, ny, db_main, db_stir, steel_key, fc, fy_
 # ==========================================
 # 5. STREAMLIT UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Column Designer (V2.4)")
+st.title("🏗️ Ultimate SRC Column Designer (V2.5)")
 st.markdown("---")
 
 # --- SIDEBAR INPUTS ---
@@ -328,11 +352,9 @@ with st.sidebar:
     with st.expander("Reinforcement", expanded=True):
         col1, col2 = st.columns(2)
         w_cover = col1.number_input("Cover (cm)", value=4.0, step=0.5)
-        # Select from MAIN DB
         w_main_bar = col2.selectbox("Main Bar", main_rebar_list, index=3)
         w_nx = col1.number_input("Nx (side b)", value=3, min_value=2)
         w_ny = col2.number_input("Ny (side h)", value=3, min_value=2)
-        # Select from LINK DB
         w_stir_bar = col1.selectbox("Stirrup", link_rebar_list, index=1)
         w_stir_spacing = col2.number_input("Spacing @ (cm)", value=15.0, step=1.0)
 
