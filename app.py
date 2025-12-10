@@ -10,20 +10,18 @@ import urllib.request
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer V2.8", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer V3.0", page_icon="🏗️", layout="wide")
 
-# Setup Font (Cross-Platform)
+# Setup Font
 @st.cache_resource
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Regular.ttf"
     font_path = "Sarabun-Regular.ttf"
-    
     if not os.path.exists(font_path):
         try:
             urllib.request.urlretrieve(font_url, font_path)
-        except Exception:
+        except:
             return "sans-serif"
-
     try:
         fe = fm.FontEntry(fname=font_path, name='Sarabun')
         fm.fontManager.ttflist.insert(0, fe)
@@ -36,7 +34,7 @@ def setup_font():
 
 setup_font()
 
-# CSS Styling (Sidebar 400px + Dark Mode Fix)
+# CSS Styling
 st.markdown("""
 <style>
     section[data-testid="stSidebar"] { width: 400px !important; }
@@ -48,19 +46,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ENGINEERING DATA
+# 2. ENGINEERING DATA (UPDATED)
 # ==========================================
-main_rebar_list = ["DB12", "DB16", "DB20", "DB25", "DB28", "DB32"]
-link_rebar_list = ["RB6", "RB9", "DB10", "DB12"]
+# 1. Rebar Grade Database (ksc)
+FY_GRADES = {
+    "SR24": 2400,
+    "SD30": 3000,
+    "SD40": 4000,
+    "SD50": 5000
+}
 
+# 2. Rebar Lists (Separated)
+# Main Bar (Usually Deformed Bars)
+main_rebar_list = ["DB12", "DB16", "DB20", "DB22", "DB25", "DB28", "DB32"]
+# Stirrup Bar (Round + Small Deformed)
+link_rebar_list = ["RB6", "RB9", "RB12", "DB10", "DB12", "DB16"]
+
+# Combined DB for Area Calculation
 rebar_db = {
-    "RB6": 0.6, "RB9": 0.9, 
-    "DB10": 1.0, "DB12": 1.2, 
-    "DB16": 1.6, "DB20": 2.0, 
+    "RB6": 0.6, "RB9": 0.9, "RB12": 1.2,
+    "DB10": 1.0, "DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB22": 2.2,
     "DB25": 2.5, "DB28": 2.8, "DB32": 3.2
 }
 
-# Standard H-Beam DB
+# H-Beam DB
 H_BEAM_STD = {
     "None": None,
     "H-100x100": {'d': 100, 'bf': 100, 'tw': 6, 'tf': 8},
@@ -81,17 +90,14 @@ def get_stress_block(fc): return max(0.65, 0.85 - 0.05*(fc-280)/70) if fc > 280 
 def get_phi_axial(eps_t): return 0.65 if eps_t <= 0.002 else (0.90 if eps_t >= 0.005 else 0.65 + (eps_t - 0.002)*(250/3))
 
 def get_steel_prop(key, custom_dict=None):
-    if key == "Custom" and custom_dict:
-        return custom_dict
+    if key == "Custom" and custom_dict: return custom_dict
     return H_BEAM_STD.get(key)
 
 def get_src_layers(D_conc, steel_key, custom_prop, axis='major'):
     prop = get_steel_prop(steel_key, custom_prop)
     if prop is None: return []
-    
     d_s, bf_s = prop['d']/10.0, prop['bf']/10.0
     tw_s, tf_s = prop['tw']/10.0, prop['tf']/10.0
-    
     layers = []
     if axis == 'major':
         gap = (D_conc - d_s) / 2.0
@@ -106,26 +112,21 @@ def get_src_layers(D_conc, steel_key, custom_prop, axis='major'):
     return layers
 
 # ==========================================
-# 3. CALCULATION LOGIC (With Fixes)
+# 3. CALCULATION LOGIC
 # ==========================================
 
 def parse_loads(raw_text, scale_seismic, mag_m2, mag_m3):
     if not raw_text: return []
     lines = raw_text.strip().split('\n'); processed_loads = []
     for i, line in enumerate(lines):
-        # --- 🛡️ FIX 1: Robust Input Cleaning (Comma + Tab) ---
         line = line.replace(',', '').replace('\t', ' ')
-        
         nums = [float(x) for x in re.findall(r"-?\d+\.?\d*", line)]
         if len(nums) >= 5:
             P, M2, M3, V2, V3 = nums[0], nums[1], nums[2], nums[3], nums[4]
             processed_loads.append({
-                'ID': f"L{i+1}",
-                'P': P * scale_seismic,
-                'M2': M2 * scale_seismic * mag_m2,
-                'M3': M3 * scale_seismic * mag_m3,
-                'V2': V2 * scale_seismic,
-                'V3': V3 * scale_seismic
+                'ID': f"L{i+1}", 'P': P * scale_seismic,
+                'M2': M2 * scale_seismic * mag_m2, 'M3': M3 * scale_seismic * mag_m3,
+                'V2': V2 * scale_seismic, 'V3': V3 * scale_seismic
             })
     return processed_loads
 
@@ -137,13 +138,10 @@ def calculate_shear_capacity_dynamic(W, D, fc, fy_stir, db_stir, s_stir, cover, 
     Ag = W * D
     Nu_kg = Nu_ton * 1000.0
     
-    if Nu_kg >= 0:
-        nu_factor = 1 + (Nu_kg / (140 * Ag))
-        if nu_factor > 3.5: nu_factor = 3.5
-    else:
-        nu_factor = 1 + (Nu_kg / (35 * Ag))
-        if nu_factor < 0: nu_factor = 0
-    
+    nu_factor = 1 + (Nu_kg / (140 * Ag)) if Nu_kg >= 0 else 1 + (Nu_kg / (35 * Ag))
+    if Nu_kg >= 0: nu_factor = min(nu_factor, 3.5)
+    else: nu_factor = max(nu_factor, 0)
+        
     Vc_2 = 0.53 * np.sqrt(fc) * D * d_eff_x * nu_factor / 1000.0
     Vs_2 = (Av * fy_stir * d_eff_x / s_stir) / 1000.0
     Vc_3 = 0.53 * np.sqrt(fc) * W * d_eff_y * nu_factor / 1000.0
@@ -151,7 +149,6 @@ def calculate_shear_capacity_dynamic(W, D, fc, fy_stir, db_stir, s_stir, cover, 
     
     Vst_2 = 0.0; Vst_3 = 0.0
     prop = get_steel_prop(steel_key, custom_prop)
-    
     if prop:
         d_cm, bf_cm = prop['d']/10.0, prop['bf']/10.0
         tw_cm, tf_cm = prop['tw']/10.0, prop['tf']/10.0
@@ -160,7 +157,6 @@ def calculate_shear_capacity_dynamic(W, D, fc, fy_stir, db_stir, s_stir, cover, 
 
     PhiVn2 = phi_v * (Vc_2 + Vs_2 + Vst_2)
     PhiVn3 = phi_v * (Vc_3 + Vs_3 + Vst_3)
-    
     return {'PhiVn2': PhiVn2, 'PhiVn3': PhiVn3, 'Vc2': Vc_2, 'Vs2': Vs_2, 'Vst2': Vst_2, 'Vc3': Vc_3, 'Vs3': Vs_3, 'Vst3': Vst_3, 'Nu_Factor': nu_factor}
 
 def gen_pm_curve_src(width, depth, n_w, n_d, fc, fy_rebar, fy_steel, cover, db_main, steel_key, custom_prop, axis):
@@ -182,19 +178,16 @@ def gen_pm_curve_src(width, depth, n_w, n_d, fc, fy_rebar, fy_steel, cover, db_m
     for c in c_vals:
         a = min(beta1*c, depth); Cc = 0.85*fc*a*width
         F_tot, M_tot = 0, 0; epsl = []; h_c = depth/2
-        
         for br in bars:
             es = 0.003*(c-br['d'])/c; epsl.append(-es)
             fs = np.clip(es*Es, -fy_rebar, fy_rebar)
             F = br['A']*(fs - 0.85*fc) if (es > 0 and br['d'] < a) else br['A']*fs
             F_tot += F; M_tot += F*(h_c - br['d'])
-            
         for st in src_layers:
             es = 0.003*(c-st['d'])/c; epsl.append(-es)
             fs = np.clip(es*Es, -fy_steel, fy_steel)
             F = st['A']*(fs - 0.85*fc) if (es > 0 and st['d'] < a) else st['A']*fs
             F_tot += F; M_tot += F*(h_c - st['d'])
-            
         phi = get_phi_axial(max(epsl) if epsl else 0)
         res_P.append(phi*(Cc+F_tot)/1000); res_M.append(phi*(Cc*(h_c-a/2)+M_tot)/100000)
     return np.array(res_M), np.array(res_P), Pn_max
@@ -205,9 +198,7 @@ def interp_capacity(P_target, P_curve, M_curve):
 
 def process_loads(loads, Mn33, Pn33, Mn22, Pn22, Pmax_ton, section_data):
     processed = []
-    # Unpack updated section_data
     W, D, fc, fy_stir, db_stir, s_stir, cover, db_main, steel_key, custom_prop, fy_steel = section_data
-    
     for l in loads:
         Mox = max(0.1, interp_capacity(l['P'], Pn33, Mn33))
         Moy = max(0.1, interp_capacity(l['P'], Pn22, Mn22))
@@ -225,20 +216,20 @@ def process_loads(loads, Mn33, Pn33, Mn22, Pn22, Pmax_ton, section_data):
         })
     return processed
 
-def generate_step_text_src_v2(L, fy_stir_val):
+def generate_step_text_src_v2(L, fy_stir_val, fy_main_val):
     shear = L['shear_data']
     reason = "Max Shear Ratio" if L['UR_Shear'] > L['UR_PM'] else "Max P-M Interaction Ratio"
     txt = f"CRITICAL CASE SELECTION: {L['ID']} (Reason: {reason})\n"
     txt += f"Design Loads (Factored): Pu={L['P']:.1f}T, Mu2={L['M2']:.1f}T-m, Mu3={L['M3']:.1f}T-m\n"
     txt += "="*60 + "\n"
-    txt += "PART A: AXIAL & MOMENT INTERACTION (Bresler Method)\n"
+    txt += f"PART A: AXIAL & MOMENT INTERACTION (Using Main Fy={fy_main_val} ksc)\n"
     txt += f"   • Capacity M33 (Major Axis): For Pu = {L['P']:.1f} T -> Phi*Mnx = {L['Mox']:.2f} T-m\n"
     txt += f"   • Capacity M22 (Minor Axis): For Pu = {L['P']:.1f} T -> Phi*Mny = {L['Moy']:.2f} T-m\n"
     txt += f"   • Ratio X = |Mu3|/PhiMnx = {abs(L['M3']):.2f}/{L['Mox']:.2f} = {L['RatioX']:.3f}\n"
     txt += f"   • Ratio Y = |Mu2|/PhiMny = {abs(L['M2']):.2f}/{L['Moy']:.2f} = {L['RatioY']:.3f}\n"
     txt += f"   • Interaction Equation: ({L['RatioX']:.3f})^1.5 + ({L['RatioY']:.3f})^1.5 = {L['UR_PM']:.3f}\n"
     txt += f"   • Status: {L['Status']} (Limit <= 1.0)\n\n"
-    txt += f"PART B: SHEAR DESIGN (Dynamic Nu + Composite + Fy_stir={fy_stir_val} ksc)\n"
+    txt += f"PART B: SHEAR DESIGN (Using Stirrup Fy={fy_stir_val} ksc)\n"
     txt += f"   • Axial Load Effect (Nu Factor): {shear['Nu_Factor']:.3f} (Enhances Vc)\n"
     txt += f"   [Shear V2 - Minor Axis]\n"
     txt += f"     • Vc (Concrete) = {shear['Vc2']:.2f} T\n"
@@ -255,7 +246,7 @@ def generate_step_text_src_v2(L, fy_stir_val):
     return txt
 
 # ==========================================
-# 4. PLOTTING FUNCTION (Dual Panel - V1.7 Style)
+# 4. PLOTTING FUNCTION
 # ==========================================
 def plot_section_preview(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
     fig, (ax_img, ax_txt) = plt.subplots(1, 2, figsize=(10, 5), gridspec_kw={'width_ratios': [1, 1.2]})
@@ -321,22 +312,23 @@ def plot_section_preview(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_
 # ==========================================
 # 5. STREAMLIT UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Column Designer (V2.8)")
+st.title("🏗️ Ultimate SRC Column Designer (V3.0)")
 st.markdown("---")
 
-# --- SIDEBAR INPUTS ---
+# --- SIDEBAR INPUTS (Reorganized) ---
 with st.sidebar:
     st.header("1️⃣ Section Properties")
     
+    # 1. Concrete (Updated: Added Cover)
     with st.expander("Concrete & Section", expanded=True):
         col1, col2 = st.columns(2)
         w_b = col1.number_input("Width b (cm)", value=50.0, step=5.0)
         w_h = col2.number_input("Depth h (cm)", value=50.0, step=5.0)
         w_fc = col1.number_input("fc' (ksc)", value=280.0, step=10.0)
-        w_fy_main = col2.number_input("Fy Main Bar (ksc)", value=4000.0, step=100.0)
+        w_cover = col2.number_input("Cover (cm)", value=4.0, step=0.5) # Moved here
 
+    # 2. Structural Steel
     with st.expander("Structural Steel (SRC)", expanded=True):
-        # Custom Size Option
         w_steel_key = st.selectbox("H-Beam Size", ["Custom"] + list(H_BEAM_STD.keys()), index=4)
         custom_prop = None
         if w_steel_key == "Custom":
@@ -349,19 +341,28 @@ with st.sidebar:
             
         w_fy_steel = st.number_input("Fy Steel (ksc)", value=2400.0, step=100.0)
 
+    # 3. Reinforcement (Updated: Grade Selection)
     with st.expander("Reinforcement", expanded=True):
+        st.markdown("**Main Bars**")
         col1, col2 = st.columns(2)
-        w_cover = col1.number_input("Cover (cm)", value=4.0, step=0.5)
-        w_main_bar = col2.selectbox("Main Bar", main_rebar_list, index=3)
-        w_nx = col1.number_input("Nx (side b)", value=3, min_value=2)
-        w_ny = col2.number_input("Ny (side h)", value=3, min_value=2)
+        w_main_bar = col1.selectbox("Size", main_rebar_list, index=3)
+        # Dropdown for Main Fy
+        w_fy_main_key = col2.selectbox("Fy (Main)", ["SD30", "SD40", "SD50"], index=1)
+        w_fy_main = FY_GRADES[w_fy_main_key] # Map to value
         
-        w_stir_bar = col1.selectbox("Stirrup", link_rebar_list, index=1)
-        w_stir_spacing = col2.number_input("Spacing @ (cm)", value=15.0, step=1.0)
+        c3, c4 = st.columns(2)
+        w_nx = c3.number_input("Nx (side b)", value=3, min_value=2)
+        w_ny = c4.number_input("Ny (side h)", value=3, min_value=2)
         
-        w_fy_stir_db = 4000.0 
-        if "DB" in w_stir_bar:
-            w_fy_stir_db = st.number_input("Fy Stirrup (ksc)", value=4000.0, step=100.0)
+        st.markdown("---")
+        st.markdown("**Stirrups**")
+        col3, col4 = st.columns(2)
+        w_stir_bar = col3.selectbox("Size ", link_rebar_list, index=1) # Space to differentiate key
+        # Dropdown for Stirrup Fy
+        w_fy_stir_key = col4.selectbox("Fy (Stirrup)", ["SR24", "SD30", "SD40", "SD50"], index=0)
+        w_fy_stir = FY_GRADES[w_fy_stir_key] # Map to value
+        
+        w_stir_spacing = st.number_input("Spacing @ (cm)", value=15.0, step=1.0)
 
     st.header("2️⃣ Factors")
     w_seismic = st.number_input("Seismic Scale", value=1.0, step=0.1)
@@ -385,42 +386,17 @@ with col_main_R:
     w_input = st.text_area("Paste Data Here:", value=default_input, height=150)
     
     if st.button("🚀 Run Analysis", type="primary"):
-        # --- 🛡️ VALIDATION START ---
-        # 1. Prepare Check Variables
+        # --- Validation ---
         prop_check = get_steel_prop(w_steel_key, custom_prop)
         if prop_check:
-            d_check = prop_check['d'] / 10.0 # cm
-            bf_check = prop_check['bf'] / 10.0 # cm
-            tf_check = prop_check['tf'] # mm
-            tw_check = prop_check['tw'] # mm
-            d_mm = prop_check['d']
-
-            # 2. Geometry Check
-            min_cover = 2.0 
-            if (d_check + 2*min_cover > w_h) or (bf_check + 2*min_cover > w_b):
-                 st.error(f"⛔ **CRITICAL ERROR:** Steel section is too large for the concrete column!\n\nSteel: {d_check}x{bf_check} cm vs Concrete: {w_b}x{w_h} cm (Need min 2cm cover)")
-                 st.stop()
-
-            # 3. Physics Check
-            if w_steel_key == "Custom":
-                if 2 * tf_check >= d_mm:
-                    st.error(f"⛔ **PHYSICS ERROR:** Flanges are too thick (2*tf >= d). Impossible geometry.")
-                    st.stop()
-                if tw_check > bf_check*10: 
-                    st.warning("⚠️ **WARNING:** Web is thicker than Flange width. Please verify inputs.")
-                # 4. Unit Sanity Check
-                if d_mm < 50:
-                    st.warning(f"⚠️ **UNIT CHECK:** You entered d={d_mm}. Did you mean {d_mm} **cm**? Input expects **mm**.")
-        # --- VALIDATION END ---
+            d_mm, bf_mm, tf_mm, tw_mm = prop_check['d'], prop_check['bf'], prop_check['tf'], prop_check['tw']
+            if (d_mm/10.0 + 4 > w_h) or (bf_mm/10.0 + 4 > w_b):
+                 st.error(f"⛔ **CRITICAL ERROR:** Steel section is too large for concrete! (Need min 2cm cover)"); st.stop()
+            if w_steel_key == "Custom" and (2*tf_mm >= d_mm or tw_mm > bf_mm):
+                 st.error(f"⛔ **PHYSICS ERROR:** Impossible geometry."); st.stop()
 
         with st.spinner("Calculating..."):
-            # Determine Stirrup Fy
-            if "RB" in w_stir_bar:
-                fy_stir_calc = 2400
-            else:
-                fy_stir_calc = w_fy_stir_db
-            
-            section_data = (w_b, w_h, w_fc, fy_stir_calc, db_s, w_stir_spacing, w_cover, db_m, w_steel_key, custom_prop, w_fy_steel)
+            section_data = (w_b, w_h, w_fc, w_fy_stir, db_s, w_stir_spacing, w_cover, db_m, w_steel_key, custom_prop, w_fy_steel)
             
             Mn33, Pn33, Pmax = gen_pm_curve_src(w_b, w_h, w_nx, w_ny, w_fc, w_fy_main, w_fy_steel, w_cover, db_m, w_steel_key, custom_prop, 'major')
             Mn22, Pn22, _ = gen_pm_curve_src(w_h, w_b, w_ny, w_nx, w_fc, w_fy_main, w_fy_steel, w_cover, db_m, w_steel_key, custom_prop, 'minor')
@@ -430,16 +406,16 @@ with col_main_R:
             
             st.session_state['results'] = results
             st.session_state['curves'] = (Mn33, Pn33, Mn22, Pn22, Pmax)
-            st.session_state['fy_stir_used'] = fy_stir_calc
+            st.session_state['fy_stir_used'] = w_fy_stir
+            st.session_state['fy_main_used'] = w_fy_main
 
 if 'results' in st.session_state:
     results = st.session_state['results']
     Mn33, Pn33, Mn22, Pn22, Pmax = st.session_state['curves']
-    fy_stir_used = st.session_state.get('fy_stir_used', 4000)
     
     st.markdown("---")
     st.header("📊 Analysis Results")
-    st.info(f"ℹ️ Stirrup Used: {st.session_state.get('w_stir_bar', '')} (Fy = **{fy_stir_used} ksc**)")
+    st.info(f"ℹ️ Design Basis: Main Fy=**{st.session_state['fy_main_used']}**, Stirrup Fy=**{st.session_state['fy_stir_used']}** ksc")
     
     col_res1, col_res2 = st.columns([1.5, 1])
     
@@ -478,5 +454,5 @@ if 'results' in st.session_state:
     st.subheader("📝 Detailed Calculation (Critical Case)")
     if results:
         crit_case = max(results, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
-        calc_text = generate_step_text_src_v2(crit_case, fy_stir_used)
+        calc_text = generate_step_text_src_v2(crit_case, st.session_state['fy_stir_used'], st.session_state['fy_main_used'])
         st.markdown(f'<div class="report-box">{calc_text}</div>', unsafe_allow_html=True)
