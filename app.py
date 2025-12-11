@@ -277,8 +277,8 @@ def generate_step_text_src_xy(L, fy_stir_val, fy_main_val):
     return txt
 
 def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
-    # [FIX] ลดขนาด Figure Size ลง เพื่อลดพื้นที่ว่าง (Whitespace)
-    fig = Figure(figsize=(8, 4), dpi=100)
+    # [FIX] ปรับขนาด Figure ให้กระชับขึ้น (7x4.5 นิ้ว)
+    fig = Figure(figsize=(7, 4.5), dpi=100)
     fig.patch.set_facecolor('white')
     
     gs = fig.add_gridspec(1, 2, width_ratios=[1.2, 1])
@@ -337,7 +337,6 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
     for txt, col, sz in info:
         ax_txt.text(0, y_pos, txt, fontsize=sz, color=col, fontweight='bold' if sz>10 else 'normal', family='monospace'); y_pos -= 0.12
     
-    # [FIX] ใช้ tight_layout เพื่อตัดขอบขาวที่ดันกราฟอื่นตกลงไป
     fig.tight_layout()
     return fig
 
@@ -388,7 +387,7 @@ with st.sidebar:
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
 # --------------------------------------------------------------------------------
-# MAIN LAYOUT: ใช้ Column Ratio 1.4:1 เพื่อให้กราฟมีที่พอ
+# MAIN LAYOUT: ใช้ Column Ratio 1.4:1
 # --------------------------------------------------------------------------------
 col_L, col_R = st.columns([1.4, 1])
 
@@ -399,9 +398,9 @@ with col_L:
     db_m_cm, db_s_cm = db_m, db_s
     
     # 1. วาดรูปหน้าตัด (Section Preview)
-    # [FIX] ฟังก์ชันนี้ถูกแก้ให้ใช้ tight_layout แล้ว กราฟจะไม่กินพื้นที่ขาวเกินจำเป็น
     fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
-    st.pyplot(fig_sec)
+    # [FIX CRITICAL] เพิ่ม bbox_inches='tight' เพื่อตัดขอบขาวทิ้ง!
+    st.pyplot(fig_sec, bbox_inches='tight', pad_inches=0.1)
     del fig_sec; gc.collect()
 
     # 2. วาดกราฟ P-M (ถ้ามีผลลัพธ์) **บังคับให้อยู่ตรงนี้ ต่อจากรูปหน้าตัดทันที**
@@ -449,7 +448,6 @@ with col_L:
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10)
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], fontsize=9, color='blue', fontweight='bold')
             
-        # [FIX] บังคับสัดส่วนวงกลมเต็มวง
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         ax2.set_xlabel(r'Ratio X ($M_{ux}/\phi M_{nx}$)')
@@ -457,9 +455,9 @@ with col_L:
         ax2.set_title("Interaction Ratio", fontweight='bold')
         ax2.grid(True, ls=':', alpha=0.5)
         
-        # [FIX] ใช้ tight_layout เพื่อลดขอบขาว
         fig.tight_layout()
-        st.pyplot(fig) 
+        # [FIX CRITICAL] เพิ่ม bbox_inches='tight' ที่นี่ด้วย เพื่อความชัวร์
+        st.pyplot(fig, bbox_inches='tight', pad_inches=0.1) 
         del fig; gc.collect()
 
 # >>> COLUMN RIGHT <<<
