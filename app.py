@@ -13,10 +13,10 @@ import matplotlib.font_manager as fm
 import re
 import os
 import urllib.request
-import gc # Garbage Collector เพื่อบังคับคืนแรม
+import gc # Garbage Collector
 
 # ==========================================
-# 1. SYSTEM SETUP & STYLE (VERSION 3.6 Final)
+# 1. SYSTEM SETUP & STYLE
 # ==========================================
 st.set_page_config(page_title="Ultimate SRC Designer v3.6 (Stable)", page_icon="🏗️", layout="wide")
 
@@ -68,14 +68,12 @@ main_rebar_list = ["DB12", "DB16", "DB20", "DB22", "DB25", "DB28", "DB32"]
 stirrup_rb_list = ["RB6", "RB9", "RB12"]
 stirrup_db_list = ["DB10", "DB12", "DB16"]
 
-# Database หน่วย cm
 rebar_db = {
     "RB6": 0.6, "RB9": 0.9, "RB12": 1.2,
     "DB10": 1.0, "DB12": 1.2, "DB16": 1.6, "DB20": 2.0, "DB22": 2.2,
     "DB25": 2.5, "DB28": 2.8, "DB32": 3.2
 }
 
-# Database หน่วย mm (ต้องหาร 10 เพื่อเป็น cm ใน code)
 H_BEAM_STD = {
     "None": None,
     "H-100x100": {'d': 100, 'bf': 100, 'tw': 6, 'tf': 8},
@@ -101,7 +99,6 @@ def get_steel_prop(key, custom_dict=None):
 def get_src_layers(D_conc, steel_key, custom_prop, bending_axis='x'):
     prop = get_steel_prop(steel_key, custom_prop)
     if prop is None: return []
-    # แปลง mm เป็น cm
     d_s, bf_s = prop['d']/10.0, prop['bf']/10.0
     tw_s, tf_s = prop['tw']/10.0, prop['tf']/10.0
     layers = []
@@ -140,7 +137,6 @@ def parse_loads(raw_text, scale_seismic, mag_mx, mag_my):
 
 def calculate_shear_capacity_xy(W, D, fc, fy_stir, db_stir, s_stir, cover, db_main, steel_key, custom_prop, fy_steel, Nu_ton):
     phi_v = 0.75
-    # Effective depth correction (subtract stirrup and half main bar)
     dist_center = cover + db_stir + db_main/2
     d_v_y = D - dist_center 
     d_v_x = W - dist_center 
@@ -179,7 +175,6 @@ def calculate_shear_capacity_xy(W, D, fc, fy_stir, db_stir, s_stir, cover, db_ma
 def gen_pm_curve_src(bending_dim, perp_dim, n_bend, n_perp, fc, fy_rebar, fy_steel, cover, db_main_val, db_stir_val, steel_key, custom_prop, axis_name):
     As_b = np.pi * db_main_val**2 / 4
     bars = []
-    # Correct d_center: cover + stirrup + main/2
     d_center = cover + db_stir_val + db_main_val/2.0
     
     for _ in range(n_perp): 
@@ -274,15 +269,16 @@ def generate_step_text_src_xy(L, fy_stir_val, fy_main_val):
     txt += f"PART B: SHEAR DESIGN (Stirrup Fy={fy_stir_val} ksc)\n"
     txt += f"  • Axial Nu Factor: {shear['Nu_Factor']:.2f}\n"
     txt += f"  [Shear Vx - Horizontal]\n"
-    txt += f"    • Phi*Vnx = {shear['PhiVn_x']:.2f} T (Vc={shear['Vc_x']:.1f}, Vs={shear['Vs_x']:.1f}, Vst={shear['Vst_x']:.1f})\n"
-    txt += f"    • Ratio Vx = {abs(L['Vx'])/shear['PhiVn_x']:.3f}\n"
+    txt += f"  • Phi*Vnx = {shear['PhiVn_x']:.2f} T (Vc={shear['Vc_x']:.1f}, Vs={shear['Vs_x']:.1f}, Vst={shear['Vst_x']:.1f})\n"
+    txt += f"  • Ratio Vx = {abs(L['Vx'])/shear['PhiVn_x']:.3f}\n"
     txt += f"  [Shear Vy - Vertical]\n"
-    txt += f"    • Phi*Vny = {shear['PhiVn_y']:.2f} T (Vc={shear['Vc_y']:.1f}, Vs={shear['Vs_y']:.1f}, Vst={shear['Vst_y']:.1f})\n"
-    txt += f"    • Ratio Vy = {abs(L['Vy'])/shear['PhiVn_y']:.3f}\n"
+    txt += f"  • Phi*Vny = {shear['PhiVn_y']:.2f} T (Vc={shear['Vc_y']:.1f}, Vs={shear['Vs_y']:.1f}, Vst={shear['Vst_y']:.1f})\n"
+    txt += f"  • Ratio Vy = {abs(L['Vy'])/shear['PhiVn_y']:.3f}\n"
     return txt
 
 def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
-    fig = Figure(figsize=(10, 5), dpi=100)
+    # [FIX] ลดขนาด Figure Size ลง เพื่อลดพื้นที่ว่าง (Whitespace)
+    fig = Figure(figsize=(8, 4), dpi=100)
     fig.patch.set_facecolor('white')
     
     gs = fig.add_gridspec(1, 2, width_ratios=[1.2, 1])
@@ -341,15 +337,16 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
     for txt, col, sz in info:
         ax_txt.text(0, y_pos, txt, fontsize=sz, color=col, fontweight='bold' if sz>10 else 'normal', family='monospace'); y_pos -= 0.12
     
+    # [FIX] ใช้ tight_layout เพื่อตัดขอบขาวที่ดันกราฟอื่นตกลงไป
+    fig.tight_layout()
     return fig
 
 # ==========================================
-# 4. UI LAYOUT (REPLACE FROM HERE TO END OF FILE)
+# 4. UI LAYOUT
 # ==========================================
 st.title("🏗️ Ultimate SRC Designer v3.6 (Fixed Layout)")
 st.markdown("---")
 
-# --- SIDEBAR INPUTS ---
 with st.sidebar:
     st.header("1️⃣ Section Config")
     with st.expander("Concrete", expanded=True):
@@ -390,7 +387,9 @@ with st.sidebar:
     w_mx_fac = st.number_input("Mag. Mx", value=1.0)
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
-# --- MAIN LAYOUT (LEFT: GRAPH / RIGHT: INPUT) ---
+# --------------------------------------------------------------------------------
+# MAIN LAYOUT: ใช้ Column Ratio 1.4:1 เพื่อให้กราฟมีที่พอ
+# --------------------------------------------------------------------------------
 col_L, col_R = st.columns([1.4, 1])
 
 # >>> COLUMN LEFT <<<
@@ -400,22 +399,22 @@ with col_L:
     db_m_cm, db_s_cm = db_m, db_s
     
     # 1. วาดรูปหน้าตัด (Section Preview)
+    # [FIX] ฟังก์ชันนี้ถูกแก้ให้ใช้ tight_layout แล้ว กราฟจะไม่กินพื้นที่ขาวเกินจำเป็น
     fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
     st.pyplot(fig_sec)
     del fig_sec; gc.collect()
 
-    # 2. วาดกราฟ P-M (ถ้ามีผลลัพธ์) **บังคับให้อยู่ตรงนี้**
+    # 2. วาดกราฟ P-M (ถ้ามีผลลัพธ์) **บังคับให้อยู่ตรงนี้ ต่อจากรูปหน้าตัดทันที**
     if 'results' in st.session_state:
         res = st.session_state['results']
         Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
         
         st.write("---")
         
-        # สร้าง Figure
+        # สร้าง Figure (ขนาด 10x6.5 นิ้ว)
         fig = Figure(figsize=(10, 6.5), dpi=100)
         fig.patch.set_facecolor('white')
         
-        # แบ่งซ้ายขวา (P-M Diagram | Interaction Ratio)
         gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1])
         ax1 = fig.add_subplot(gs[0])
         ax2 = fig.add_subplot(gs[1])
@@ -426,13 +425,11 @@ with col_L:
         ax1.plot(-Mnx, Pnx, 'r-'); ax1.plot(-Mny, Pny, 'b--')
         ax1.axhline(Pmax, c='k', ls=':', label='Pmax')
         
-        # Plot Points
         for r in res:
             col = 'g' if r['Status']=='PASS' else 'r'
             ax1.scatter(abs(r['Mx']), r['P'], c=col, marker='o', s=45, zorder=5)
             ax1.scatter(abs(r['My']), r['P'], c=col, marker='x', s=45, zorder=5)
             
-        # Set Limits & Labels
         y_all = np.concatenate([Pnx, Pny])
         ax1.set_ylim(np.min(y_all)*1.1, np.max(y_all)*1.1)
         ax1.legend(loc='upper right', fontsize=8)
@@ -441,21 +438,18 @@ with col_L:
         ax1.set_title("P-M Capacity Check", fontweight='bold')
 
         # --- GRAPH 2: Full Circle Interaction ---
-        # วาดวงกลมเต็มวง
         theta = np.linspace(0, 2*np.pi, 120)
         ax2.plot(np.cos(theta), np.sin(theta), 'k-', lw=1.5)
         ax2.fill(np.cos(theta), np.sin(theta), '#d4edda', alpha=0.5)
         
-        # เส้นกึ่งกลาง
         ax2.axhline(0, c='gray', lw=0.5, ls='--'); ax2.axvline(0, c='gray', lw=0.5, ls='--')
         
-        # Plot Points
         for r in res:
             col = 'g' if r['Status']=='PASS' else 'r'
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10)
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], fontsize=9, color='blue', fontweight='bold')
             
-        # Fix Aspect & Labels
+        # [FIX] บังคับสัดส่วนวงกลมเต็มวง
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         ax2.set_xlabel(r'Ratio X ($M_{ux}/\phi M_{nx}$)')
@@ -463,8 +457,9 @@ with col_L:
         ax2.set_title("Interaction Ratio", fontweight='bold')
         ax2.grid(True, ls=':', alpha=0.5)
         
+        # [FIX] ใช้ tight_layout เพื่อลดขอบขาว
         fig.tight_layout()
-        st.pyplot(fig) # <-- วาดกราฟตรงนี้ทันที
+        st.pyplot(fig) 
         del fig; gc.collect()
 
 # >>> COLUMN RIGHT <<<
@@ -478,7 +473,6 @@ with col_R:
         with st.spinner("Analyzing..."):
             sec_data = (w_b, w_h, w_fc, w_fy_stir, db_s_cm, w_stir_spacing, w_cover, db_m_cm, w_steel_key, custom_prop, w_fy_steel)
             
-            # Calculations
             Mn_x, Pn_x, Pmax = gen_pm_curve_src(w_h, w_b, w_ny, w_nx, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'x')
             Mn_y, Pn_y, _ = gen_pm_curve_src(w_b, w_h, w_nx, w_ny, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'y')
             loads = parse_loads(w_input, w_seismic, w_mx_fac, w_my_fac)
@@ -488,9 +482,9 @@ with col_R:
             st.session_state['curves'] = (Mn_x, Pn_x, Mn_y, Pn_y, Pmax)
             st.session_state['materials'] = (w_fy_stir, w_fy_main)
             
-            st.rerun() # Refresh เพื่อให้กราฟด้านซ้ายทำงาน
+            st.rerun()
 
-# --- BOTTOM SUMMARY (OUTSIDE COLUMNS) ---
+# --- BOTTOM SUMMARY ---
 if 'results' in st.session_state:
     res = st.session_state['results']
     fy_s, fy_m = st.session_state['materials']
@@ -509,6 +503,3 @@ if 'results' in st.session_state:
             st.caption("Critical Calculation Step")
             crit = max(res, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
             st.markdown(f'<div class="report-box">{generate_step_text_src_xy(crit, fy_s, fy_m)}</div>', unsafe_allow_html=True)
-
-# *** END OF FILE ***
-# ตรวจสอบว่าไม่มี Code อื่นๆ ต่อจากบรรทัดนี้แล้วนะครับ
