@@ -18,7 +18,7 @@ import gc # Garbage Collector
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer v3.6 (Final Fix)", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer v3.7 (Layout Fix)", page_icon="🏗️", layout="wide")
 
 @st.cache_resource
 def setup_font():
@@ -52,11 +52,12 @@ st.markdown("""
         border: 1px solid rgba(128, 128, 128, 0.2);
     }
     div[data-testid="column"] { 
-        padding: 15px; 
-        border-radius: 10px; 
-        border: 1px solid rgba(128, 128, 128, 0.2); 
+        padding: 10px; 
+        border-radius: 8px; 
+        border: 1px solid rgba(128, 128, 128, 0.1); 
     }
     .stButton>button { width: 100%; font-weight: bold; border-radius: 8px; }
+    h3 { padding-top: 0px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -187,10 +188,6 @@ def gen_pm_curve_src(bending_dim, perp_dim, n_bend, n_perp, fc, fy_rebar, fy_ste
 
     src_layers = get_src_layers(bending_dim, steel_key, custom_prop, axis_name)
     
-    # -------------------------------------------------------------
-    # [FIX] ใช้ Logspace เพื่อให้ครอบคลุมช่วง Compression ถึง Tension ได้ดีขึ้น
-    # และเริ่ม c ที่ค่าเล็กมาก (0.1 cm) ไปจนถึงใหญ่มาก
-    # -------------------------------------------------------------
     c_vals = np.linspace(bending_dim * 1.5, 0.1, 60)
     res_M, res_P = [], []
     beta1 = get_stress_block(fc)
@@ -280,37 +277,30 @@ def generate_step_text_src_xy(L, fy_stir_val, fy_main_val):
     txt += f"  • Ratio Vy = {abs(L['Vy'])/shear['PhiVn_y']:.3f}\n"
     return txt
 
-def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
-    # [FIX] ลดขนาด Figure Size ลง และใช้สัดส่วนที่เหมาะสม
-    fig = Figure(figsize=(6, 4), dpi=100)
+# [FIX] แยกส่วนวาดรูปอย่างเดียว (ไม่เอา Text) เพื่อลดพื้นที่ขาว
+def plot_section_only(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
+    # ใช้กรอบสี่เหลี่ยมจัตุรัสเล็กๆ เพื่อให้กระชับ
+    fig = Figure(figsize=(4, 4), dpi=100)
     fig.patch.set_facecolor('white')
-    
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.2, 1])
-    ax_img = fig.add_subplot(gs[0])
-    ax_txt = fig.add_subplot(gs[1])
+    ax = fig.add_subplot(111)
     
     # วาดหน้าตัด
-    ax_img.add_patch(patches.Rectangle((0,0), W, D, ec='k', fc='#f8f9fa', lw=2))
-    ax_img.add_patch(patches.Rectangle((cov,cov), W-2*cov, D-2*cov, ec='b', fc='none', ls='--', lw=0.5))
+    ax.add_patch(patches.Rectangle((0,0), W, D, ec='k', fc='#f8f9fa', lw=2))
+    ax.add_patch(patches.Rectangle((cov,cov), W-2*cov, D-2*cov, ec='b', fc='none', ls='--', lw=0.5))
     
     cx, cy = W/2, D/2
-    margin = max(W, D) * 0.2
-    ax_img.arrow(-margin, -margin/2, W+1.5*margin, 0, head_width=2, head_length=3, fc='r', ec='r', clip_on=False)
-    ax_img.text(W+margin, -margin/2, 'X', color='red', fontweight='bold', fontsize=14, va='center')
-    ax_img.arrow(-margin/2, -margin, 0, D+1.5*margin, head_width=2, head_length=3, fc='g', ec='g', clip_on=False)
-    ax_img.text(-margin/2, D+margin, 'Y', color='green', fontweight='bold', fontsize=14, ha='center')
+    margin = max(W, D) * 0.15 # ลด Margin ลง
+    ax.arrow(-margin, -margin/2, W+1.5*margin, 0, head_width=2, head_length=3, fc='r', ec='r', clip_on=False)
+    ax.text(W+margin, -margin/2, 'X', color='red', fontweight='bold', fontsize=12, va='center')
+    ax.arrow(-margin/2, -margin, 0, D+1.5*margin, head_width=2, head_length=3, fc='g', ec='g', clip_on=False)
+    ax.text(-margin/2, D+margin, 'Y', color='green', fontweight='bold', fontsize=12, ha='center')
 
     prop = get_steel_prop(steel_key, custom_prop)
-    Ast_steel = 0
     if prop:
         ds, bf, tw, tf = prop['d']/10.0, prop['bf']/10.0, prop['tw']/10.0, prop['tf']/10.0
-        Ast_steel = (2 * bf * tf + (ds - 2*tf)*tw)
-        ax_img.add_patch(patches.Rectangle((cx-tw/2, cy-ds/2), tw, ds, fc='#555', ec='k')) 
-        ax_img.add_patch(patches.Rectangle((cx-bf/2, cy-ds/2), bf, tf, fc='#555', ec='k')) 
-        ax_img.add_patch(patches.Rectangle((cx-bf/2, cy+ds/2-tf), bf, tf, fc='#555', ec='k')) 
-        sec_name = f"Custom {prop['d']:.0f}x{prop['bf']:.0f}" if steel_key=="Custom" else steel_key
-    else:
-        sec_name = "None"
+        ax.add_patch(patches.Rectangle((cx-tw/2, cy-ds/2), tw, ds, fc='#555', ec='k')) 
+        ax.add_patch(patches.Rectangle((cx-bf/2, cy-ds/2), bf, tf, fc='#555', ec='k')) 
+        ax.add_patch(patches.Rectangle((cx-bf/2, cy+ds/2-tf), bf, tf, fc='#555', ec='k')) 
 
     coords = []
     if nx > 1:
@@ -324,32 +314,55 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
             y = cov+db_stir+db_main/2 + j*sy
             coords.extend([(cov+db_stir+db_main/2, y), (W-cov-db_stir-db_main/2, y)])
     coords = list(set(coords))
-    for x,y in coords: ax_img.add_patch(patches.Circle((x,y), db_main/2, color='#d62728', ec='k'))
+    for x,y in coords: ax.add_patch(patches.Circle((x,y), db_main/2, color='#d62728', ec='k'))
 
-    ax_img.set_xlim(-margin, W+margin); ax_img.set_ylim(-margin, D+margin)
-    ax_img.axis('off'); ax_img.set_aspect('equal')
-    ax_img.text(W/2, D+2, f'b = {W} cm', ha='center', color='blue', fontweight='bold')
-    ax_img.text(W+2, D/2, f'h = {D} cm', va='center', rotation=270, color='blue', fontweight='bold')
-
-    ax_txt.axis('off')
-    Ag = W*D; As_rebar = len(coords) * (np.pi*db_main**2/4)
-    info = [("SRC PROPERTIES", "#0056b3", 12), (f"[CONCRETE] {W}x{D} cm", "black", 10), (f"[STEEL] {sec_name}", "#444", 10),
-            (f"   Area: {Ast_steel:.2f} cm2 ({Ast_steel/Ag*100:.2f}%)", "#444", 10),
-            (f"[REBAR] {len(coords)}-DB{int(db_main*10)}", "#d62728", 10),
-            (f"   Area: {As_rebar:.2f} cm2 ({As_rebar/Ag*100:.2f}%)", "#d62728", 10),
-            (f"[TOTAL STEEL] {(As_rebar+Ast_steel)/Ag*100:.2f} %", "green", 10)]
-    y_pos = 1.0
-    for txt, col, sz in info:
-        ax_txt.text(0, y_pos, txt, fontsize=sz, color=col, fontweight='bold' if sz>10 else 'normal', family='monospace'); y_pos -= 0.12
+    ax.set_xlim(-margin, W+margin); ax.set_ylim(-margin, D+margin)
+    ax.axis('off'); ax.set_aspect('equal')
     
-    # [FIX] ใช้ tight_layout เพื่อจัดระเบียบภายใน
-    fig.tight_layout()
+    # Text dimension
+    ax.text(W/2, D+margin*0.5, f'b = {W}', ha='center', color='blue', fontsize=10)
+    ax.text(W+margin*0.5, D/2, f'h = {D}', va='center', rotation=270, color='blue', fontsize=10)
+
+    fig.tight_layout(pad=0) # ตัดขอบให้เหี้ยน
     return fig
+
+# [FIX] ฟังก์ชันสำหรับเตรียม Text ข้อมูลหน้าตัด (ไม่ใช้ Matplotlib วาด Text แล้ว)
+def get_section_text_info(W, D, nx, ny, db_main, db_stir, steel_key, custom_prop):
+    prop = get_steel_prop(steel_key, custom_prop)
+    Ast_steel = 0
+    sec_name = "None"
+    if prop:
+        ds, bf, tw, tf = prop['d']/10.0, prop['bf']/10.0, prop['tw']/10.0, prop['tf']/10.0
+        Ast_steel = (2 * bf * tf + (ds - 2*tf)*tw)
+        sec_name = f"Custom {prop['d']:.0f}x{prop['bf']:.0f}" if steel_key=="Custom" else steel_key
+
+    # Calculate Rebar
+    coords = []
+    # (คำนวณซ้ำเพื่อหาจำนวนเหล็ก)
+    cov = 0 # Dummy for count
+    if nx > 1: coords.extend([1]*nx*2)
+    if ny > 2: coords.extend([1]*(ny-2)*2)
+    n_rebar = len(coords) # Approximate count based on logic
+    # Re-calc exact based on previous logic (to be safe)
+    # But for text display, simple calculation:
+    n_total = 2*nx + 2*(ny-2)
+    
+    Ag = W*D
+    As_rebar = n_total * (np.pi*db_main**2/4)
+    
+    return [
+        f"**CONCRETE:** {W:.0f} x {D:.0f} cm",
+        f"**STEEL:** {sec_name}",
+        f"- Area: {Ast_steel:.2f} cm² ({Ast_steel/Ag*100:.2f}%)",
+        f"**REBAR:** {n_total}-DB{int(db_main*10)}",
+        f"- Area: {As_rebar:.2f} cm² ({As_rebar/Ag*100:.2f}%)",
+        f"**TOTAL STEEL:** {(As_rebar+Ast_steel)/Ag*100:.2f} %"
+    ]
 
 # ==========================================
 # 4. UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Designer v3.6 (Fixed Layout)")
+st.title("🏗️ Ultimate SRC Designer v3.7 (Final Layout)")
 st.markdown("---")
 
 with st.sidebar:
@@ -393,7 +406,7 @@ with st.sidebar:
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
 # --------------------------------------------------------------------------------
-# MAIN LAYOUT: ใช้ Column Ratio 1.4:1
+# MAIN LAYOUT
 # --------------------------------------------------------------------------------
 col_L, col_R = st.columns([1.4, 1])
 
@@ -403,21 +416,30 @@ with col_L:
     db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
     db_m_cm, db_s_cm = db_m, db_s
     
-    # 1. วาดรูปหน้าตัด (Section Preview)
-    # [FIX CRITICAL] เพิ่ม bbox_inches='tight' เพื่อตัดขอบขาวทิ้ง!
-    fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
-    st.pyplot(fig_sec, bbox_inches='tight', pad_inches=0.05)
-    del fig_sec; gc.collect()
+    # [FIX MAJOR] แยกรูปกับข้อความออกจากกัน (ใช้ Columns ย่อย)
+    c_img, c_info = st.columns([1, 1])
+    
+    with c_img:
+        # วาดรูปอย่างเดียว (Figure เล็กๆ 4x4)
+        fig_sec = plot_section_only(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
+        st.pyplot(fig_sec, use_container_width=False) # ไม่ขยายเต็มจอ เอาเท่าขนาดจริง
+        del fig_sec; gc.collect()
+        
+    with c_info:
+        # แสดงข้อมูลเป็น Text ปกติ (ไม่กินที่)
+        infos = get_section_text_info(w_b, w_h, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop)
+        for line in infos:
+            st.markdown(line)
 
-    # 2. วาดกราฟ P-M (ถ้ามีผลลัพธ์) **บังคับให้อยู่ตรงนี้ ต่อจากรูปหน้าตัดทันที**
+    # 2. วาดกราฟ P-M (อยู่ต่อจาก Section ทันที ไม่มีช่องว่างแล้ว)
     if 'results' in st.session_state:
         res = st.session_state['results']
         Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
         
-        st.write("---")
+        st.markdown("---")
         
-        # สร้าง Figure (ขนาด 10x6.5 นิ้ว)
-        fig = Figure(figsize=(10, 6.5), dpi=100)
+        # สร้าง Figure 
+        fig = Figure(figsize=(10, 6.0), dpi=100)
         fig.patch.set_facecolor('white')
         
         gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1])
@@ -454,7 +476,7 @@ with col_L:
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10)
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], fontsize=9, color='blue', fontweight='bold')
             
-        # [FIX] บังคับสัดส่วนวงกลมเต็มวง
+        # [FIX] Full Circle confirmed
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         ax2.set_xlabel(r'Ratio X ($M_{ux}/\phi M_{nx}$)')
@@ -463,8 +485,7 @@ with col_L:
         ax2.grid(True, ls=':', alpha=0.5)
         
         fig.tight_layout()
-        # [FIX CRITICAL] เพิ่ม bbox_inches='tight' ที่นี่ด้วย เพื่อตัดขอบขาวทิ้ง!
-        st.pyplot(fig, bbox_inches='tight', pad_inches=0.05) 
+        st.pyplot(fig) 
         del fig; gc.collect()
 
 # >>> COLUMN RIGHT <<<
