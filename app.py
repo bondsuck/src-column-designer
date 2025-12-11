@@ -18,7 +18,7 @@ import gc # Garbage Collector
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer v3.6 (Stable)", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer v3.6 (Final Fix)", page_icon="🏗️", layout="wide")
 
 @st.cache_resource
 def setup_font():
@@ -187,6 +187,10 @@ def gen_pm_curve_src(bending_dim, perp_dim, n_bend, n_perp, fc, fy_rebar, fy_ste
 
     src_layers = get_src_layers(bending_dim, steel_key, custom_prop, axis_name)
     
+    # -------------------------------------------------------------
+    # [FIX] ใช้ Logspace เพื่อให้ครอบคลุมช่วง Compression ถึง Tension ได้ดีขึ้น
+    # และเริ่ม c ที่ค่าเล็กมาก (0.1 cm) ไปจนถึงใหญ่มาก
+    # -------------------------------------------------------------
     c_vals = np.linspace(bending_dim * 1.5, 0.1, 60)
     res_M, res_P = [], []
     beta1 = get_stress_block(fc)
@@ -277,14 +281,15 @@ def generate_step_text_src_xy(L, fy_stir_val, fy_main_val):
     return txt
 
 def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
-    # [FIX] ปรับขนาด Figure ให้กระชับขึ้น (7x4.5 นิ้ว)
-    fig = Figure(figsize=(7, 4.5), dpi=100)
+    # [FIX] ลดขนาด Figure Size ลง และใช้สัดส่วนที่เหมาะสม
+    fig = Figure(figsize=(6, 4), dpi=100)
     fig.patch.set_facecolor('white')
     
     gs = fig.add_gridspec(1, 2, width_ratios=[1.2, 1])
     ax_img = fig.add_subplot(gs[0])
     ax_txt = fig.add_subplot(gs[1])
     
+    # วาดหน้าตัด
     ax_img.add_patch(patches.Rectangle((0,0), W, D, ec='k', fc='#f8f9fa', lw=2))
     ax_img.add_patch(patches.Rectangle((cov,cov), W-2*cov, D-2*cov, ec='b', fc='none', ls='--', lw=0.5))
     
@@ -337,6 +342,7 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
     for txt, col, sz in info:
         ax_txt.text(0, y_pos, txt, fontsize=sz, color=col, fontweight='bold' if sz>10 else 'normal', family='monospace'); y_pos -= 0.12
     
+    # [FIX] ใช้ tight_layout เพื่อจัดระเบียบภายใน
     fig.tight_layout()
     return fig
 
@@ -398,9 +404,9 @@ with col_L:
     db_m_cm, db_s_cm = db_m, db_s
     
     # 1. วาดรูปหน้าตัด (Section Preview)
-    fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
     # [FIX CRITICAL] เพิ่ม bbox_inches='tight' เพื่อตัดขอบขาวทิ้ง!
-    st.pyplot(fig_sec, bbox_inches='tight', pad_inches=0.1)
+    fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
+    st.pyplot(fig_sec, bbox_inches='tight', pad_inches=0.05)
     del fig_sec; gc.collect()
 
     # 2. วาดกราฟ P-M (ถ้ามีผลลัพธ์) **บังคับให้อยู่ตรงนี้ ต่อจากรูปหน้าตัดทันที**
@@ -448,6 +454,7 @@ with col_L:
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10)
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], fontsize=9, color='blue', fontweight='bold')
             
+        # [FIX] บังคับสัดส่วนวงกลมเต็มวง
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         ax2.set_xlabel(r'Ratio X ($M_{ux}/\phi M_{nx}$)')
@@ -456,8 +463,8 @@ with col_L:
         ax2.grid(True, ls=':', alpha=0.5)
         
         fig.tight_layout()
-        # [FIX CRITICAL] เพิ่ม bbox_inches='tight' ที่นี่ด้วย เพื่อความชัวร์
-        st.pyplot(fig, bbox_inches='tight', pad_inches=0.1) 
+        # [FIX CRITICAL] เพิ่ม bbox_inches='tight' ที่นี่ด้วย เพื่อตัดขอบขาวทิ้ง!
+        st.pyplot(fig, bbox_inches='tight', pad_inches=0.05) 
         del fig; gc.collect()
 
 # >>> COLUMN RIGHT <<<
