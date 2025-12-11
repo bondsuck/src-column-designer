@@ -356,7 +356,7 @@ with st.sidebar:
         w_b = col1.number_input("Width b (X-dir)", value=50.0, step=5.0)
         w_h = col2.number_input("Depth h (Y-dir)", value=50.0, step=5.0)
         w_fc = col1.number_input("fc' (ksc)", value=280.0, step=10.0)
-        w_cover = col2.number_input("Clear Cover (cm)", value=3.0, step=0.5, help="Distance from surface to stirrup")
+        w_cover = col2.number_input("Covering (cm)", value=3.0, step=0.5, help="Distance from surface to stirrup")
 
     with st.expander("Structural Steel", expanded=True):
         w_steel_key = st.selectbox("Size", ["Custom"] + list(H_BEAM_STD.keys()), index=4)
@@ -515,3 +515,4 @@ if 'results' in st.session_state:
             st.subheader("🧐 Critical Case Analysis")
             crit = max(res, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
             st.markdown(f'<div class="report-box">{generate_step_text_src_xy(crit, fy_s, fy_m)}</div>', unsafe_allow_html=True)
+
