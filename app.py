@@ -344,7 +344,7 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
     return fig
 
 # ==========================================
-# 4. UI LAYOUT
+# 4. UI LAYOUT (MODIFIED: Layout Fix + Full Circle Plot)
 # ==========================================
 st.title("🏗️ Ultimate SRC Designer v3.6 (Stable OO)")
 st.markdown("---")
@@ -389,21 +389,90 @@ with st.sidebar:
     w_mx_fac = st.number_input("Mag. Mx", value=1.0)
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
-col_L, col_R = st.columns([1, 1.2])
+# สร้าง Columns หลัก: ซ้าย (รูปภาพ+กราฟ) | ขวา (Input)
+col_L, col_R = st.columns([1.3, 1])
 
 with col_L:
     st.subheader("🔍 Section Preview")
     db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
-    # [FIX]: Use variable directly, DO NOT divide by 10 (rebar_db is already cm)
     db_m_cm, db_s_cm = db_m, db_s
     
-    # [FIX] Use OO plotting
+    # [SECTION PLOT]
     fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
     st.pyplot(fig_sec)
     
-    # Explicit Cleanup
+    # Clean up memory
     del fig_sec 
     gc.collect()
+
+    # *************************************************************************
+    # [CRITICAL UPDATE] ย้ายกราฟมาแสดงที่นี่ (col_L) และแก้กราฟวงกลม
+    # *************************************************************************
+    if 'results' in st.session_state:
+        res = st.session_state['results']
+        Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
+        
+        st.subheader("📈 P-M Interaction Diagram")
+        
+        # ปรับขนาด Figure ให้สูงขึ้นเล็กน้อย (10, 6)
+        fig = Figure(figsize=(10, 6), dpi=100) 
+        fig.patch.set_facecolor('white')
+        
+        # ปรับสัดส่วน: กราฟ P-M (ซ้าย) กว้างกว่า กราฟวงกลม (ขวา) เล็กน้อย
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1]) 
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1])
+        
+        # --- Plot 1: P-M Diagram (Left) ---
+        ax1.plot(Mnx, Pnx, 'r-', label='Mx Cap'); ax1.plot(Mny, Pny, 'b--', label='My Cap')
+        ax1.plot(-Mnx, Pnx, 'r-'); ax1.plot(-Mny, Pny, 'b--')
+        ax1.axhline(Pmax, c='k', ls=':', label='Pmax'); ax1.legend(); ax1.grid(ls=':', alpha=0.5)
+        ax1.set_xlabel('Moment (T-m)'); ax1.set_ylabel('Axial Load (T)'); ax1.set_title("P-M Capacity")
+        
+        # ปรับแกน Y ให้ครอบคลุมจุดต่ำสุด/สูงสุด + เผื่อพื้นที่ 10%
+        y_min = min(np.min(Pnx), np.min(Pny))
+        y_max = max(np.max(Pnx), np.max(Pny))
+        ax1.set_ylim(y_min * 1.1, y_max * 1.1) 
+        
+        for r in res:
+            col = 'g' if r['Status']=='PASS' else 'r'
+            ax1.scatter(abs(r['Mx']), r['P'], c=col, marker='o', s=40, zorder=5)
+            ax1.scatter(abs(r['My']), r['P'], c=col, marker='x', s=40, zorder=5)
+            
+        # --- Plot 2: Interaction Ratio (Right - Full Circle) ---
+        t = np.linspace(0, 2*np.pi, 100)
+        # วาดวงกลมเต็มวง (Full Circle)
+        ax2.plot(np.cos(t), np.sin(t), 'k-', lw=1) 
+        ax2.fill(np.cos(t), np.sin(t), '#d4edda', alpha=0.5) # สีเขียวอ่อน
+        
+        # เส้นกากบาทกลาง (Crosshair)
+        ax2.axhline(0, color='gray', lw=0.5); ax2.axvline(0, color='gray', lw=0.5)
+
+        for r in res:
+            col = 'g' if r['Status']=='PASS' else 'r'
+            # Plot จุด Ratio
+            ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=60, edgecolors='k', zorder=5)
+            # ใส่ Label ID
+            ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My'], r['ID'], fontsize=9, color='blue')
+        
+        # [UPDATE] ปรับ Limit ให้เห็นทั้งวงกลม (Full Circle View)
+        ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
+        ax2.set_aspect('equal')
+        
+        # [UPDATE] ใส่ชื่อแกนตามที่ขอ
+        ax2.set_xlabel(r'Ratio Mx ($M_{ux} / \phi M_{nx}$)', fontsize=9)
+        ax2.set_ylabel(r'Ratio My ($M_{uy} / \phi M_{ny}$)', fontsize=9)
+        ax2.set_title("Interaction Ratio Check", fontsize=11)
+        ax2.grid(True, ls=':', alpha=0.5)
+        
+        # ใช้ tight_layout จัดระเบียบ
+        fig.tight_layout()
+        
+        # แสดงผลกราฟ
+        st.pyplot(fig)
+        
+        del fig
+        gc.collect()
 
 with col_R:
     st.subheader("📋 Input Loads")
@@ -425,59 +494,24 @@ with col_R:
             st.session_state['curves'] = (Mn_x, Pn_x, Mn_y, Pn_y, Pmax)
             st.session_state['materials'] = (w_fy_stir, w_fy_main)
             
-            # Force GC after massive calculation
-            gc.collect()
+            # Rerun เพื่อให้กราฟแสดงผลทันทีใน col_L
+            st.rerun()
 
+# ส่วนแสดงตารางสรุปผล (อยู่ด้านล่างสุด)
 if 'results' in st.session_state:
     res = st.session_state['results']
-    Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
-    
-    st.markdown("---")
-    st.header("📊 Analysis Report")
-    
-    c1, c2 = st.columns([1.5, 1])
-    with c1:
-        # [CRITICAL FIX] Use Pure Object-Oriented Figure
-        # แทนการใช้ plt.subplots() เราใช้ Figure() โดยตรง
-        fig = Figure(figsize=(10, 5), dpi=100)
-        fig.patch.set_facecolor('white')
-        
-        gs = fig.add_gridspec(1, 2)
-        ax1 = fig.add_subplot(gs[0])
-        ax2 = fig.add_subplot(gs[1])
-        
-        # Plotting on private Axes instances (ax1, ax2)
-        ax1.plot(Mnx, Pnx, 'r-', label='Mx Cap'); ax1.plot(Mny, Pny, 'b--', label='My Cap')
-        ax1.plot(-Mnx, Pnx, 'r-'); ax1.plot(-Mny, Pny, 'b--')
-        ax1.axhline(Pmax, c='k', ls=':', label='Pmax'); ax1.legend(); ax1.grid(ls=':')
-        ax1.set_xlabel('Moment (T-m)'); ax1.set_ylabel('Axial (T)'); ax1.set_title("P-M Diagram")
-        
-        for r in res:
-            col = 'g' if r['Status']=='PASS' else 'r'
-            ax1.scatter(abs(r['Mx']), r['P'], c=col, marker='o'); ax1.scatter(abs(r['My']), r['P'], c=col, marker='x')
-            
-        t = np.linspace(0, 2*np.pi, 100)
-        ax2.plot(np.cos(t), np.sin(t), 'k-'); ax2.fill(np.cos(t), np.sin(t), '#d4edda', alpha=0.5)
-        for r in res:
-            col = 'g' if r['Status']=='PASS' else 'r'
-            ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=60, edgecolors='k')
-            ax2.text(r['Ratio_Mx'], r['Ratio_My'], r['ID'], fontsize=8)
-        ax2.set_xlim(0, 1.5); ax2.set_ylim(0, 1.5); ax2.set_aspect('equal'); ax2.grid(ls=':')
-        
-        # Render the private figure
-        st.pyplot(fig)
-        
-        # Explicit Cleanup
-        del fig
-        gc.collect()
+    fy_s, fy_m = st.session_state['materials']
 
-    with c2:
-        st.subheader("Summary")
+    st.markdown("---")
+    col_sum1, col_sum2 = st.columns([1, 1.5])
+    
+    with col_sum1:
+        st.subheader("📝 Summary Table")
         t_data = [{"ID":r['ID'], "Pu":f"{r['P']:.0f}", "R_PM":f"{r['UR_PM']:.2f}", "R_V":f"{r['UR_Shear']:.2f}", "Status":r['Status']} for r in res]
-        st.dataframe(t_data, hide_index=True)
+        st.dataframe(t_data, hide_index=True, use_container_width=True)
 
-    st.markdown("---")
-    if res:
-        crit = max(res, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
-        fy_s, fy_m = st.session_state['materials']
-        st.markdown(f'<div class="report-box">{generate_step_text_src_xy(crit, fy_s, fy_m)}</div>', unsafe_allow_html=True)
+    with col_sum2:
+        if res:
+            st.subheader("🧐 Critical Case Analysis")
+            crit = max(res, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
+            st.markdown(f'<div class="report-box">{generate_step_text_src_xy(crit, fy_s, fy_m)}</div>', unsafe_allow_html=True)
