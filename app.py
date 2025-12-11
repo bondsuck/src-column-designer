@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import matplotlib
+
 # Force Backend ให้เป็น Agg เพื่อไม่ให้ตีกับ GUI ของ Server
 matplotlib.use("Agg") 
 
@@ -18,23 +19,29 @@ import gc # Garbage Collector
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer v3.7 (Layout Fix)", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer v3.8 (Layout Fixed)", page_icon="🏗️", layout="wide")
 
 @st.cache_resource
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Regular.ttf"
     font_path = "Sarabun-Regular.ttf"
+    
     if not os.path.exists(font_path):
-        try: urllib.request.urlretrieve(font_url, font_path)
-        except: return "sans-serif"
+        try: 
+            urllib.request.urlretrieve(font_url, font_path)
+        except Exception: 
+            return "sans-serif"
+            
     try:
+        # Register Font ด้วยวิธี FontEntry (วิธีที่ถูกต้องสำหรับ Matplotlib ใหม่)
         fe = fm.FontEntry(fname=font_path, name='Sarabun')
         fm.fontManager.ttflist.insert(0, fe)
         matplotlib.rcParams['font.family'] = fe.name
         matplotlib.rcParams['axes.unicode_minus'] = False
         matplotlib.rcParams['font.size'] = 11
         return fe.name
-    except: return "sans-serif"
+    except Exception: 
+        return "sans-serif"
 
 setup_font()
 
@@ -91,8 +98,17 @@ H_BEAM_STD = {
 Es = 2040000
 
 def get_db(n): return rebar_db.get(n, 0)
-def get_stress_block(fc): return max(0.65, 0.85 - 0.05*(fc-280)/70) if fc > 280 else 0.85
-def get_phi_axial(eps_t): return 0.65 if eps_t <= 0.002 else (0.90 if eps_t >= 0.005 else 0.65 + (eps_t - 0.002)*(250/3))
+
+def get_stress_block(fc): 
+    if fc <= 280: return 0.85
+    val = 0.85 - 0.05 * (fc - 280) / 70
+    return max(0.65, val)
+
+def get_phi_axial(eps_t): 
+    if eps_t <= 0.002: return 0.65
+    elif eps_t >= 0.005: return 0.90
+    else: return 0.65 + (eps_t - 0.002) * (250 / 3)
+
 def get_steel_prop(key, custom_dict=None):
     if key == "Custom" and custom_dict: return custom_dict
     return H_BEAM_STD.get(key)
@@ -100,8 +116,10 @@ def get_steel_prop(key, custom_dict=None):
 def get_src_layers(D_conc, steel_key, custom_prop, bending_axis='x'):
     prop = get_steel_prop(steel_key, custom_prop)
     if prop is None: return []
+    
     d_s, bf_s = prop['d']/10.0, prop['bf']/10.0
     tw_s, tf_s = prop['tw']/10.0, prop['tf']/10.0
+    
     layers = []
     if bending_axis == 'x': 
         gap = (D_conc - d_s) / 2.0
@@ -121,9 +139,11 @@ def get_src_layers(D_conc, steel_key, custom_prop, bending_axis='x'):
 
 def parse_loads(raw_text, scale_seismic, mag_mx, mag_my):
     if not raw_text: return []
-    lines = raw_text.strip().split('\n'); processed_loads = []
+    lines = raw_text.strip().split('\n')
+    processed_loads = []
     for i, line in enumerate(lines):
         line = line.replace(',', '').replace('\t', ' ')
+        # Regex เพื่อจับตัวเลข (รวมทศนิยมและค่าติดลบ)
         nums = [float(x) for x in re.findall(r"-?\d+\.?\d*", line)]
         if len(nums) >= 5:
             processed_loads.append({
@@ -178,6 +198,7 @@ def gen_pm_curve_src(bending_dim, perp_dim, n_bend, n_perp, fc, fy_rebar, fy_ste
     bars = []
     d_center = cover + db_stir_val + db_main_val/2.0
     
+    # Generate Rebar Coordinates (Simplified Layer Approach)
     for _ in range(n_perp): 
         bars.extend([{'A':As_b, 'd':d_center}, {'A':As_b, 'd':bending_dim-d_center}])
     
@@ -209,6 +230,7 @@ def gen_pm_curve_src(bending_dim, perp_dim, n_bend, n_perp, fc, fy_rebar, fy_ste
             epsl.append(-es)
             fy_curr = fy_rebar if st in bars else fy_steel
             fs = np.clip(es*Es, -fy_curr, fy_curr)
+            
             if es > 0 and st['d'] < a:
                 F = st['A']*(fs - 0.85*fc)
             else:
@@ -277,10 +299,9 @@ def generate_step_text_src_xy(L, fy_stir_val, fy_main_val):
     txt += f"  • Ratio Vy = {abs(L['Vy'])/shear['PhiVn_y']:.3f}\n"
     return txt
 
-# [FIX] แยกส่วนวาดรูปอย่างเดียว (ไม่เอา Text) เพื่อลดพื้นที่ขาว
 def plot_section_only(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_prop, fc, fy_steel):
-    # ใช้กรอบสี่เหลี่ยมจัตุรัสเล็กๆ เพื่อให้กระชับ
-    fig = Figure(figsize=(4, 4), dpi=100)
+    # ปรับ figsize ให้เหมาะสมกับ Container และเพิ่ม DPI
+    fig = Figure(figsize=(4, 4), dpi=120)
     fig.patch.set_facecolor('white')
     ax = fig.add_subplot(111)
     
@@ -289,7 +310,7 @@ def plot_section_only(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_pro
     ax.add_patch(patches.Rectangle((cov,cov), W-2*cov, D-2*cov, ec='b', fc='none', ls='--', lw=0.5))
     
     cx, cy = W/2, D/2
-    margin = max(W, D) * 0.15 # ลด Margin ลง
+    margin = max(W, D) * 0.15 
     ax.arrow(-margin, -margin/2, W+1.5*margin, 0, head_width=2, head_length=3, fc='r', ec='r', clip_on=False)
     ax.text(W+margin, -margin/2, 'X', color='red', fontweight='bold', fontsize=12, va='center')
     ax.arrow(-margin/2, -margin, 0, D+1.5*margin, head_width=2, head_length=3, fc='g', ec='g', clip_on=False)
@@ -313,20 +334,19 @@ def plot_section_only(W, D, cov, nx, ny, db_main, db_stir, steel_key, custom_pro
         for j in range(1, ny-1):
             y = cov+db_stir+db_main/2 + j*sy
             coords.extend([(cov+db_stir+db_main/2, y), (W-cov-db_stir-db_main/2, y)])
+            
     coords = list(set(coords))
     for x,y in coords: ax.add_patch(patches.Circle((x,y), db_main/2, color='#d62728', ec='k'))
 
     ax.set_xlim(-margin, W+margin); ax.set_ylim(-margin, D+margin)
     ax.axis('off'); ax.set_aspect('equal')
     
-    # Text dimension
     ax.text(W/2, D+margin*0.5, f'b = {W}', ha='center', color='blue', fontsize=10)
     ax.text(W+margin*0.5, D/2, f'h = {D}', va='center', rotation=270, color='blue', fontsize=10)
 
-    fig.tight_layout(pad=0) # ตัดขอบให้เหี้ยน
+    fig.tight_layout(pad=0.2)
     return fig
 
-# [FIX] ฟังก์ชันสำหรับเตรียม Text ข้อมูลหน้าตัด (ไม่ใช้ Matplotlib วาด Text แล้ว)
 def get_section_text_info(W, D, nx, ny, db_main, db_stir, steel_key, custom_prop):
     prop = get_steel_prop(steel_key, custom_prop)
     Ast_steel = 0
@@ -336,17 +356,13 @@ def get_section_text_info(W, D, nx, ny, db_main, db_stir, steel_key, custom_prop
         Ast_steel = (2 * bf * tf + (ds - 2*tf)*tw)
         sec_name = f"Custom {prop['d']:.0f}x{prop['bf']:.0f}" if steel_key=="Custom" else steel_key
 
-    # Calculate Rebar
+    # Calculate Rebar Count approximation
+    cov = 0 # Dummy
     coords = []
-    # (คำนวณซ้ำเพื่อหาจำนวนเหล็ก)
-    cov = 0 # Dummy for count
     if nx > 1: coords.extend([1]*nx*2)
     if ny > 2: coords.extend([1]*(ny-2)*2)
-    n_rebar = len(coords) # Approximate count based on logic
-    # Re-calc exact based on previous logic (to be safe)
-    # But for text display, simple calculation:
-    n_total = 2*nx + 2*(ny-2)
     
+    n_total = 2*nx + 2*(ny-2)
     Ag = W*D
     As_rebar = n_total * (np.pi*db_main**2/4)
     
@@ -362,7 +378,7 @@ def get_section_text_info(W, D, nx, ny, db_main, db_stir, steel_key, custom_prop
 # ==========================================
 # 4. UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Designer v3.7 (Final Layout)")
+st.title("🏗️ Ultimate SRC Designer v3.8 (Final Fix)")
 st.markdown("---")
 
 with st.sidebar:
@@ -408,7 +424,7 @@ with st.sidebar:
 # --------------------------------------------------------------------------------
 # MAIN LAYOUT
 # --------------------------------------------------------------------------------
-col_L, col_R = st.columns([1.4, 1])
+col_L, col_R = st.columns([1.5, 1])
 
 # >>> COLUMN LEFT <<<
 with col_L:
@@ -416,31 +432,29 @@ with col_L:
     db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
     db_m_cm, db_s_cm = db_m, db_s
     
-    # [FIX MAJOR] แยกรูปกับข้อความออกจากกัน (ใช้ Columns ย่อย)
     c_img, c_info = st.columns([1, 1])
     
     with c_img:
-        # วาดรูปอย่างเดียว (Figure เล็กๆ 4x4)
         fig_sec = plot_section_only(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
-        st.pyplot(fig_sec, use_container_width=False) # ไม่ขยายเต็มจอ เอาเท่าขนาดจริง
+        st.pyplot(fig_sec, use_container_width=False)
         del fig_sec; gc.collect()
         
     with c_info:
-        # แสดงข้อมูลเป็น Text ปกติ (ไม่กินที่)
         infos = get_section_text_info(w_b, w_h, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop)
         for line in infos:
             st.markdown(line)
 
-    # 2. วาดกราฟ P-M (อยู่ต่อจาก Section ทันที ไม่มีช่องว่างแล้ว)
+    # 2. วาดกราฟ P-M
     if 'results' in st.session_state:
         res = st.session_state['results']
         Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
         
         st.markdown("---")
         
-        # สร้าง Figure 
-        fig = Figure(figsize=(10, 6.0), dpi=100)
-        fig.patch.set_facecolor('white')
+        # [DEBUG FIXED] ใช้ layout='constrained' เพื่อแก้ปัญหากราฟตกขอบ
+        # ปรับ figsize ให้สมส่วน (Width กว้างขึ้น, Height ไม่สูงเกินไป)
+        fig = Figure(figsize=(10, 5.5), dpi=100, layout='constrained')
+        fig.patch.set_facecolor('white') # บังคับพื้นหลังขาว (แก้ปัญหามองไม่เห็นใน Dark Mode)
         
         gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1])
         ax1 = fig.add_subplot(gs[0])
@@ -458,13 +472,14 @@ with col_L:
             ax1.scatter(abs(r['My']), r['P'], c=col, marker='x', s=45, zorder=5)
             
         y_all = np.concatenate([Pnx, Pny])
+        # Margin คำนวณแบบปลอดภัย (ถ้าค่าติดลบ *1.1 จะยิ่งลบมากขึ้น ซึ่งถูกต้อง)
         ax1.set_ylim(np.min(y_all)*1.1, np.max(y_all)*1.1)
         ax1.legend(loc='upper right', fontsize=8)
         ax1.grid(ls=':', alpha=0.6)
         ax1.set_xlabel('Moment (T-m)'); ax1.set_ylabel('Axial Load (T)')
         ax1.set_title("P-M Capacity Check", fontweight='bold')
 
-        # --- GRAPH 2: Full Circle Interaction ---
+        # --- GRAPH 2: Interaction Ratio ---
         theta = np.linspace(0, 2*np.pi, 120)
         ax2.plot(np.cos(theta), np.sin(theta), 'k-', lw=1.5)
         ax2.fill(np.cos(theta), np.sin(theta), '#d4edda', alpha=0.5)
@@ -476,7 +491,6 @@ with col_L:
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10)
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], fontsize=9, color='blue', fontweight='bold')
             
-        # [FIX] Full Circle confirmed
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         ax2.set_xlabel(r'Ratio X ($M_{ux}/\phi M_{nx}$)')
@@ -484,7 +498,7 @@ with col_L:
         ax2.set_title("Interaction Ratio", fontweight='bold')
         ax2.grid(True, ls=':', alpha=0.5)
         
-        fig.tight_layout()
+        # ไม่ใช้ fig.tight_layout() แล้ว เพราะใช้ layout='constrained' ตอนสร้าง Figure
         st.pyplot(fig) 
         del fig; gc.collect()
 
