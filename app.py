@@ -17,7 +17,7 @@ import gc
 # ==========================================
 # 1. SYSTEM SETUP & STYLE
 # ==========================================
-st.set_page_config(page_title="Ultimate SRC Designer v3.9 (Outlier Fix)", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="Ultimate SRC Designer v3.9.1 (Scope Fix)", page_icon="🏗️", layout="wide")
 
 @st.cache_resource
 def setup_font():
@@ -282,7 +282,7 @@ def get_section_text_info(W, D, nx, ny, db_main, db_stir, steel_key, custom_prop
 # ==========================================
 # 4. UI LAYOUT
 # ==========================================
-st.title("🏗️ Ultimate SRC Designer v3.9 (Layout Fixed)")
+st.title("🏗️ Ultimate SRC Designer v3.9.1 (Scope Fix)")
 st.markdown("---")
 
 with st.sidebar:
@@ -321,10 +321,14 @@ with st.sidebar:
     w_mx_fac = st.number_input("Mag. Mx", value=1.0)
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
+# [FIX] Calculate global variables HERE, before columns
+db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
+db_m_cm, db_s_cm = db_m, db_s # Assign to names used in logic
+
 col_L, col_R = st.columns([1.5, 1])
+
 with col_L:
     st.subheader("🔍 Section & Analysis")
-    db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
     c_img, c_info = st.columns([1, 1])
     with c_img:
         fig_sec = plot_section_only(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
@@ -339,7 +343,7 @@ with col_L:
         Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
         st.markdown("---")
         
-        # [FIX CRITICAL] ใช้ layout='constrained' และจัดการ Outlier
+        # [FIX] Graph layout fix applied here too
         fig = Figure(figsize=(10, 5.5), dpi=100, layout='constrained')
         fig.patch.set_facecolor('white')
         gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1])
@@ -361,7 +365,7 @@ with col_L:
         ax1.set_xlabel('Moment (T-m)'); ax1.set_ylabel('Axial Load (T)')
         ax1.set_title("P-M Capacity Check", fontweight='bold')
 
-        # Graph 2: Interaction (FIXED POINT)
+        # Graph 2: Interaction with Outlier Fix
         theta = np.linspace(0, 2*np.pi, 120)
         ax2.plot(np.cos(theta), np.sin(theta), 'k-', lw=1.5)
         ax2.fill(np.cos(theta), np.sin(theta), '#d4edda', alpha=0.5)
@@ -369,14 +373,9 @@ with col_L:
         
         for r in res:
             col = 'g' if r['Status']=='PASS' else 'r'
-            
-            # [FIX] เช็คว่าค่าพิกัดหลุดโลกไหม ถ้าเกิน 2.0 ไม่ต้องแสดง Text 
-            # (เพราะกราฟเราโชว์แค่ -1.3 ถึง 1.3)
-            # ใส่ clip_on=True เพื่อตัดส่วนที่เกินกราฟทิ้ง ไม่ให้ขยาย layout
+            # Check visibility
             is_visible = (abs(r['Ratio_Mx']) < 3.0) and (abs(r['Ratio_My']) < 3.0)
-            
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=80, edgecolors='k', zorder=10, clip_on=True)
-            
             if is_visible:
                 ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My']+0.05, r['ID'], 
                          fontsize=9, color='blue', fontweight='bold', clip_on=True)
@@ -399,6 +398,7 @@ with col_R:
     
     if st.button("🚀 Calculate Check", type="primary"):
         with st.spinner("Analyzing..."):
+            # Now db_s_cm and db_m_cm are visible here
             sec_data = (w_b, w_h, w_fc, w_fy_stir, db_s_cm, w_stir_spacing, w_cover, db_m_cm, w_steel_key, custom_prop, w_fy_steel)
             Mn_x, Pn_x, Pmax = gen_pm_curve_src(w_h, w_b, w_ny, w_nx, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'x')
             Mn_y, Pn_y, _ = gen_pm_curve_src(w_b, w_h, w_nx, w_ny, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'y')
