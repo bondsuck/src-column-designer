@@ -344,7 +344,7 @@ def plot_section_preview_xy(W, D, cov, nx, ny, db_main, db_stir, steel_key, cust
     return fig
 
 # ==========================================
-# 4. UI LAYOUT (MODIFIED: Layout Fix + Full Circle Plot)
+# 4. UI LAYOUT (FINAL FIX: Move Graph INSIDE col_L)
 # ==========================================
 st.title("🏗️ Ultimate SRC Designer v3.6 (Stable OO)")
 st.markdown("---")
@@ -356,7 +356,7 @@ with st.sidebar:
         w_b = col1.number_input("Width b (X-dir)", value=50.0, step=5.0)
         w_h = col2.number_input("Depth h (Y-dir)", value=50.0, step=5.0)
         w_fc = col1.number_input("fc' (ksc)", value=280.0, step=10.0)
-        w_cover = col2.number_input("Covering (cm)", value=3.0, step=0.5, help="Distance from surface to stirrup")
+        w_cover = col2.number_input("Clear Cover (cm)", value=3.0, step=0.5, help="Distance from surface to stirrup")
 
     with st.expander("Structural Steel", expanded=True):
         w_steel_key = st.selectbox("Size", ["Custom"] + list(H_BEAM_STD.keys()), index=4)
@@ -389,36 +389,40 @@ with st.sidebar:
     w_mx_fac = st.number_input("Mag. Mx", value=1.0)
     w_my_fac = st.number_input("Mag. My", value=1.0)
 
-# สร้าง Columns หลัก: ซ้าย (รูปภาพ+กราฟ) | ขวา (Input)
+# Layout หลัก: ซ้าย 1.3 ส่วน | ขวา 1 ส่วน
 col_L, col_R = st.columns([1.3, 1])
 
+# =========================================================
+# COLUMN LEFT: แสดงรูป Section และ กราฟ P-M (ต้องเขียนในนี้)
+# =========================================================
 with col_L:
     st.subheader("🔍 Section Preview")
     db_m, db_s = get_db(w_main_bar), get_db(w_stir_bar)
     db_m_cm, db_s_cm = db_m, db_s
     
-    # [SECTION PLOT]
+    # 1. วาดรูปหน้าตัด
     fig_sec = plot_section_preview_xy(w_b, w_h, w_cover, w_nx, w_ny, db_m, db_s, w_steel_key, custom_prop, w_fc, w_fy_steel)
     st.pyplot(fig_sec)
-    
-    # Clean up memory
     del fig_sec 
     gc.collect()
 
-    # *************************************************************************
-    # [CRITICAL UPDATE] ย้ายกราฟมาแสดงที่นี่ (col_L) และแก้กราฟวงกลม
-    # *************************************************************************
+    # 2. วาดกราฟ P-M (เช็คว่ามีผลลัพธ์หรือยัง ถ้ามีให้วาดเลย ตรงนี้!)
+    # **********************************************************
+    # [FIX] โค้ดส่วนนี้อยู่ภายใต้การเยื้อง (Indentation) ของ with col_L
+    # ทำให้กราฟแสดงผลต่อจากรูปหน้าตัดทันที ไม่หล่นไปข้างล่าง
+    # **********************************************************
     if 'results' in st.session_state:
         res = st.session_state['results']
         Mnx, Pnx, Mny, Pny, Pmax = st.session_state['curves']
         
+        st.markdown("---")
         st.subheader("📈 P-M Interaction Diagram")
         
-        # ปรับขนาด Figure ให้สูงขึ้นเล็กน้อย (10, 6)
+        # สร้าง Figure
         fig = Figure(figsize=(10, 6), dpi=100) 
         fig.patch.set_facecolor('white')
         
-        # ปรับสัดส่วน: กราฟ P-M (ซ้าย) กว้างกว่า กราฟวงกลม (ขวา) เล็กน้อย
+        # แบ่ง Grid: ซ้าย (P-M) กว้างกว่า ขวา (วงกลม)
         gs = fig.add_gridspec(1, 2, width_ratios=[1.3, 1]) 
         ax1 = fig.add_subplot(gs[0])
         ax2 = fig.add_subplot(gs[1])
@@ -426,54 +430,55 @@ with col_L:
         # --- Plot 1: P-M Diagram (Left) ---
         ax1.plot(Mnx, Pnx, 'r-', label='Mx Cap'); ax1.plot(Mny, Pny, 'b--', label='My Cap')
         ax1.plot(-Mnx, Pnx, 'r-'); ax1.plot(-Mny, Pny, 'b--')
-        ax1.axhline(Pmax, c='k', ls=':', label='Pmax'); ax1.legend(); ax1.grid(ls=':', alpha=0.5)
+        ax1.axhline(Pmax, c='k', ls=':', label='Pmax'); ax1.legend(loc='upper right', fontsize=8)
+        ax1.grid(ls=':', alpha=0.5)
         ax1.set_xlabel('Moment (T-m)'); ax1.set_ylabel('Axial Load (T)'); ax1.set_title("P-M Capacity")
         
-        # ปรับแกน Y ให้ครอบคลุมจุดต่ำสุด/สูงสุด + เผื่อพื้นที่ 10%
+        # ปรับแกน Y (Axial) ให้เห็นครบทั้งแรงอัดและแรงดึง
         y_min = min(np.min(Pnx), np.min(Pny))
         y_max = max(np.max(Pnx), np.max(Pny))
         ax1.set_ylim(y_min * 1.1, y_max * 1.1) 
         
+        # Plot จุด Load Case
         for r in res:
             col = 'g' if r['Status']=='PASS' else 'r'
             ax1.scatter(abs(r['Mx']), r['P'], c=col, marker='o', s=40, zorder=5)
             ax1.scatter(abs(r['My']), r['P'], c=col, marker='x', s=40, zorder=5)
             
         # --- Plot 2: Interaction Ratio (Right - Full Circle) ---
+        # วาดวงกลมเต็มวง
         t = np.linspace(0, 2*np.pi, 100)
-        # วาดวงกลมเต็มวง (Full Circle)
         ax2.plot(np.cos(t), np.sin(t), 'k-', lw=1) 
-        ax2.fill(np.cos(t), np.sin(t), '#d4edda', alpha=0.5) # สีเขียวอ่อน
+        ax2.fill(np.cos(t), np.sin(t), '#d4edda', alpha=0.5) # พื้นที่ปลอดภัยสีเขียว
         
-        # เส้นกากบาทกลาง (Crosshair)
+        # เส้นกากบาท
         ax2.axhline(0, color='gray', lw=0.5); ax2.axvline(0, color='gray', lw=0.5)
 
+        # Plot จุด Ratio
         for r in res:
             col = 'g' if r['Status']=='PASS' else 'r'
-            # Plot จุด Ratio
             ax2.scatter(r['Ratio_Mx'], r['Ratio_My'], c=col, s=60, edgecolors='k', zorder=5)
-            # ใส่ Label ID
             ax2.text(r['Ratio_Mx']+0.05, r['Ratio_My'], r['ID'], fontsize=9, color='blue')
         
-        # [UPDATE] ปรับ Limit ให้เห็นทั้งวงกลม (Full Circle View)
+        # [FIX] บังคับให้แสดงผลเต็มวง (-1.3 ถึง 1.3) และเป็นสี่เหลี่ยมจัตุรัส (equal aspect)
         ax2.set_xlim(-1.3, 1.3); ax2.set_ylim(-1.3, 1.3)
         ax2.set_aspect('equal')
         
-        # [UPDATE] ใส่ชื่อแกนตามที่ขอ
+        # [FIX] ใส่ชื่อแกน X, Y
         ax2.set_xlabel(r'Ratio Mx ($M_{ux} / \phi M_{nx}$)', fontsize=9)
         ax2.set_ylabel(r'Ratio My ($M_{uy} / \phi M_{ny}$)', fontsize=9)
         ax2.set_title("Interaction Ratio Check", fontsize=11)
         ax2.grid(True, ls=':', alpha=0.5)
         
-        # ใช้ tight_layout จัดระเบียบ
         fig.tight_layout()
-        
-        # แสดงผลกราฟ
         st.pyplot(fig)
         
         del fig
         gc.collect()
 
+# =========================================================
+# COLUMN RIGHT: Input และ ปุ่มคำนวณ
+# =========================================================
 with col_R:
     st.subheader("📋 Input Loads")
     st.info("Format: P  Mx  My  Vx  Vy (Space separated)")
@@ -484,35 +489,40 @@ with col_R:
         with st.spinner("Analyzing..."):
             sec_data = (w_b, w_h, w_fc, w_fy_stir, db_s_cm, w_stir_spacing, w_cover, db_m_cm, w_steel_key, custom_prop, w_fy_steel)
             
+            # คำนวณกราฟ
             Mn_x, Pn_x, Pmax = gen_pm_curve_src(w_h, w_b, w_ny, w_nx, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'x')
             Mn_y, Pn_y, _ = gen_pm_curve_src(w_b, w_h, w_nx, w_ny, w_fc, w_fy_main, w_fy_steel, w_cover, db_m_cm, db_s_cm, w_steel_key, custom_prop, 'y')
             
+            # คำนวณ Loads
             loads = parse_loads(w_input, w_seismic, w_mx_fac, w_my_fac)
             results = process_loads(loads, Mn_x, Pn_x, Mn_y, Pn_y, Pmax, sec_data)
             
+            # บันทึกเข้า Session State
             st.session_state['results'] = results
             st.session_state['curves'] = (Mn_x, Pn_x, Mn_y, Pn_y, Pmax)
             st.session_state['materials'] = (w_fy_stir, w_fy_main)
             
-            # Rerun เพื่อให้กราฟแสดงผลทันทีใน col_L
+            # [CRITICAL] สั่ง Rerun เพื่อให้กราฟที่อยู่ใน col_L แสดงผลทันที
             st.rerun()
 
-# ส่วนแสดงตารางสรุปผล (อยู่ด้านล่างสุด)
+# =========================================================
+# REPORT SECTION: ตารางสรุปผล (อยู่ด้านล่างสุด นอกคอลัมน์)
+# =========================================================
 if 'results' in st.session_state:
     res = st.session_state['results']
     fy_s, fy_m = st.session_state['materials']
 
     st.markdown("---")
-    col_sum1, col_sum2 = st.columns([1, 1.5])
+    # แบ่งคอลัมน์สำหรับตารางสรุป
+    c_sum1, c_sum2 = st.columns([1, 1.5])
     
-    with col_sum1:
+    with c_sum1:
         st.subheader("📝 Summary Table")
         t_data = [{"ID":r['ID'], "Pu":f"{r['P']:.0f}", "R_PM":f"{r['UR_PM']:.2f}", "R_V":f"{r['UR_Shear']:.2f}", "Status":r['Status']} for r in res]
         st.dataframe(t_data, hide_index=True, use_container_width=True)
 
-    with col_sum2:
+    with c_sum2:
         if res:
             st.subheader("🧐 Critical Case Analysis")
             crit = max(res, key=lambda x: max(x['UR_PM'], x['UR_Shear']))
             st.markdown(f'<div class="report-box">{generate_step_text_src_xy(crit, fy_s, fy_m)}</div>', unsafe_allow_html=True)
-
